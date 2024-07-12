@@ -1,0 +1,60 @@
+# Unity Editor command line arguments
+# https://docs.unity3d.com/Manual/EditorCommandLineArguments.html
+
+stages:
+  - build
+
+variables:
+  GIT_DEPTH: 1
+  GIT_STRATEGY: fetch
+  GIT_CLEAN_FLAGS: -ffdx -e Library/ -e Assets/AddressableAssetsData/
+  BUILD_TYPE: "R" # 'R'-release, 'D'-develop, 'DD'-developDeep, 'ALL'-all types, 'RD'-release and develop, 'RDD'-release and developDeep, 'DDD'-develop and developDeep
+  BUILD_TYPE_MR: "D"
+
+Build-main:
+  stage: build
+  only:
+    - main
+  script:
+    - echo "$BUILD_TYPE"
+    - echo "Compiling the code..."
+    - C:\"Program Files"\Unity\Hub\Editor\2021.3.20f1\Editor\Unity.exe -batchmode -quit -projectPath ./ -buildPath "D:\Builds-Main" -buildType "$BUILD_TYPE" -zipPath "D:\Builds-Main-Compressed" -executeMethod SH.CI.BuildTool.BuildAll | Out-Default
+    - echo "Compile complete."
+  after_script:
+    - >
+      curl -X POST -H 'Content-type: application/json' \
+      --data "{'text':'New build artifacts available:\n$CI_JOB_NAME [Download]($CI_JOB_URL/artifacts/download)'}" \
+      https://hooks.slack.com/services/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
+  artifacts:
+    when: always
+    paths:
+      - BuildLog/
+    reports:
+      junit: Junit/*.xml
+  allow_failure: false
+  tags:
+    - runnerv2
+
+Build-MR:
+  stage: build
+  only:
+    - merge_requests
+  script:
+    - echo "$BUILD_TYPE_MR"
+    - echo "Compiling the code..."
+    - C:\"Program Files"\Unity\Hub\Editor\2021.3.20f1\Editor\Unity.exe -batchmode -quit -projectPath ./ -buildPath "D:\Builds-Main" -buildType "$BUILD_TYPE_MR" -zipPath "D:\Builds-Main-Compressed" -suffix "_MR" -executeMethod SH.CI.BuildTool.BuildAll | Out-Default
+    - echo "Compile complete."
+  after_script:
+    - >
+      curl -X POST -H 'Content-type: application/json' \
+      --data "{'text':'New build artifacts available:\n$CI_JOB_NAME [Download]($CI_JOB_URL/artifacts/download)'}" \
+      https://hooks.slack.com/services/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
+  artifacts:
+    when: always
+    paths:
+      - BuildLog/
+    reports:
+      junit: Junit/*.xml
+  allow_failure: false
+  tags:
+    - runnerv2

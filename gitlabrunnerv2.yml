@@ -1,0 +1,264 @@
+# Unity Editor command line arguments
+# https://docs.unity3d.com/Manual/EditorCommandLineArguments.html
+
+stages:
+  - build
+  - deploy
+  - test
+
+
+variables:
+  GIT_DEPTH: 1
+  GIT_STRATEGY: fetch
+  GIT_CLEAN_FLAGS: -ffdx -e Library/ -e Assets/AddressableAssetsData/
+  BUILD_TYPE: "R" # 'R'-release, 'D'-develop, 'DD'-developDeep, 'ALL'-all types, 'RD'-release and develop, 'RDD'-release and developDeep, 'DDD'-develop and developDeep
+  BUILD_TYPE_DEVELOP: "R"
+  LOG_ENABLED: "true"
+  UPLOAD_TO_STEAM: "true"
+  SKIP_AFTER_SCRIPT: "false"
+  versionFile: 'D:\Builds\SteamUpload\Version.txt'
+  versionFile_AFTER: 'D:\Builds\SteamUpload\Version_AFTER.txt'
+  
+  
+
+ 
+  
+Build-manual:
+  stage: build
+  
+  script:
+   - echo "Manual Build."
+   - echo "$BUILD_TYPE_DEVELOP"
+   - $COMMIT_ID = git rev-parse --short=9 HEAD
+   - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+   - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+   #- C:\"Program Files"\Unity\Hub\Editor\2021.3.23f1\Editor\Unity.exe -batchmode -quit -projectPath ./ -buildPath "D:\Builds" -uploadToSteam "false" -steamUploadPath "D:\Builds\SteamUpload" -buildType "$BUILD_TYPE_DEVELOP" -zipPath "D:\Pirates-Dev-Compressed" -suffix "_$CI_COMMIT_BRANCH" -logEnabled "$LOG_ENABLED" -executeMethod SH.CI.BuildTool.BuildAll | Out-Default
+
+    
+ 
+  after_script:
+    - $COMMIT_ID = git rev-parse --short=9 HEAD
+    - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+    - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+   
+    
+    - echo "ID $BUILD_PATH"
+    
+    
+    - |
+      if ("$CI_JOB_STATUS" -eq "failed"){
+        $slackUrl = 'https://hooks.slack.com/services/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'
+        $text = "Pipeline failed at build: $BUILD_PATH"
+        $payload = @{
+          text = $text
+        } | ConvertTo-Json
+          curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl
+      } 
+     
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "feature/CI"
+     
+  artifacts:
+    when: always
+    paths:
+      - BuildLog/
+    reports:
+      junit: Junit/*.xml
+  allow_failure: false
+  tags:
+    - runnerv2
+
+
+Build-if-not-deployed:
+  stage: build
+      
+  script:
+   
+   - echo "$BUILD_TYPE_DEVELOP"
+   - $COMMIT_ID = git rev-parse --short=9 HEAD
+   - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+   - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+   - $VERSION_CONTENT = $null
+   - $VERSION_CONTENT_AFTER = $null
+   - if (Test-Path $versionFile) {
+      $VERSION_CONTENT = Get-Content -Path $versionFile -Raw
+     }
+     else {
+      New-Item -ItemType File -Path $versionFile -Force
+     }
+
+   - if (Test-Path $versionFile_AFTER) {
+      $VERSION_CONTENT_AFTER = Get-Content -Path $versionFile_AFTER -Raw
+     }
+     else {
+      New-Item -ItemType File -Path $versionFile_AFTER -Force
+     }
+   
+   
+   - |
+     if ($VERSION_CONTENT.Contains("$BUILD_PATH"))  {
+     Write-Host "Skipping build."
+    
+     }
+     else {
+     Write-Host "Compiling the code..."
+    
+     #C:\"Program Files"\Unity\Hub\Editor\2021.3.23f1\Editor\Unity.exe -batchmode -quit -projectPath ./ -buildPath "D:\Builds" -uploadToSteam "$UPLOAD_TO_STEAM" -steamUploadPath "D:\Builds\SteamUpload" -buildType "$BUILD_TYPE_DEVELOP" -zipPath "D:\Pirates-Dev-Compressed" -suffix "_$CI_COMMIT_BRANCH" -logEnabled "$LOG_ENABLED" -executeMethod SH.CI.BuildTool.BuildAll | Out-Default
+     Write-Host "Compile complete."
+     }
+   
+  after_script:
+    - $COMMIT_ID =git rev-parse --short=9 HEAD
+    - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+    - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+    - |
+      if ("$CI_JOB_STATUS" -eq "failed"){
+        $slackUrl = 'https://hooks.slack.com/services/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'
+        $text = "Pipeline failed at build: $BUILD_PATH"
+        $payload = @{
+          text = $text
+        } | ConvertTo-Json
+          curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl}
+      #} else{
+        #$slackUrl = 'https://hooks.slack.com/services/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'
+        #$text = "<@U0525KMA6HW><@U051VA48N0P><@U040QH00ACU><@U05KPADLNRY>New build available $BUILD_PATH scheduled"
+        #$payload = @{
+         # text = $text
+        #} | ConvertTo-Json
+          #curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl
+      #}
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_REF_NAME == "feature/CI" 
+  artifacts:
+    when: always
+    paths:
+      - BuildLog/
+    reports:
+      junit: Junit/*.xml
+  allow_failure: false
+  tags:
+    - runnerv2
+
+Build-steam:
+  stage: deploy
+  
+  script:
+    - $COMMIT_ID = git rev-parse --short=9 HEAD
+    - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+    - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+    - $VERSION_CONTENT = Get-Content -Path $versionFile -Raw
+    #- $VERSION_CONTENT_AFTER = Get-Content -Path $versionFile_AFTER -Raw
+    - echo "ID $BUILD_PATH"
+    - echo "TXT $VERSION_CONTENT_AFTER"
+    - echo "Status $CI_JOB_STATUS"
+    - |
+      if ($VERSION_CONTENT.Contains("$BUILD_PATH")) {
+        Write-Host "Skipping deploy."
+        
+      }else{
+      Write-Host "Uploading to Steam..."
+      #D:\SteamworksSDK\sdk\tools\ContentBuilder\builder\steamcmd.exe +login raccoons_steam_runner +run_app_build      D:\SteamworksSDK\sdk\tools\ContentBuilder\scripts\app_build_1482470.vdf +quit
+      Write-Host "Steamworks upload complete."
+      }
+    
+    
+
+  after_script:
+    - $COMMIT_ID =git rev-parse --short=9 HEAD
+    - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+    - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH" 
+    #- $VERSION_CONTENT_AFTER = Get-Content -Path $versionFile_AFTER -Raw
+    - $VERSION_CONTENT = Get-Content -Path $versionFile -Raw
+    - |
+      if ("$CI_JOB_STATUS" -eq "failed"){
+        $slackUrl = 'https://hooks.slack.com/services/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'
+        $text = "Pipeline failed at build: $BUILD_PATH"
+        $payload = @{
+          text = $text
+        } | ConvertTo-Json
+          curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl
+      } 
+    - |
+      if ($VERSION_CONTENT.Contains("$BUILD_PATH")){
+      Write-Host "Skipping notification."
+        
+      }
+      #else{
+      #Set-Content -Path $versionFile_AFTER -Value $BUILD_PATH
+      #$slackUrl = 'https://hooks.slack.com/services/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'
+      #$text = "<@U0525KMA6HW><@U051VA48N0P><@U040QH00ACU><@U05KPADLNRY>New build available $BUILD_PATH on steam"
+      #$payload = @{
+      #text = $text
+      #} | ConvertTo-Json
+      #curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl
+      #}
+
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_REF_NAME == "feature/CI" 
+  
+  
+  tags:
+    - runnerv2
+
+Build-schedule-zip:
+  stage: test
+  script:
+  - $VERSION_CONTENT = Get-Content -Path $versionFile -Raw
+  - $COMMIT_ID = git rev-parse --short=9 HEAD
+  - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+  - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+  - $sevenZipExe = C:\"Program Files"\7-Zip\7z.exe
+  - $builds_path = "D:\Builds\SteamUpload\BuildContent"
+  - $path = "$BUILD_PATH"
+  - $zip_path = "D:\Pirates-Dev-Compressed\PiratesDynasty_Preproduction"
+  - $full_path = "$builds_path"
+  
+  - |
+     if ($VERSION_CONTENT.Contains("$BUILD_PATH"))  {
+     Write-Host "Skipping zipping."
+    
+     }
+     else {
+     Write-Host "Zipping build..."
+     & "C:\Program Files\7-Zip\7z.exe" a -mx0 "$zip_path\$path.zip" "$full_path\"
+     Write-Host "Zipping complete."
+     }
+  after_script:
+    - $VERSION_CONTENT = Get-Content -Path $versionFile -Raw
+    - $COMMIT_ID =git rev-parse --short=9 HEAD
+    - $DATE= git show -s --format="%cd" --date=format:"%Y.%m.%d_%H.%M" HEAD
+    - $BUILD_PATH ="$DATE"+"_"+"$COMMIT_ID"+"_"+"$CI_COMMIT_BRANCH"
+    #- $VERSION_CONTENT_AFTER = Get-Content -Path $versionFile_AFTER -Raw
+    - |
+      if ("$CI_JOB_STATUS" -eq "failed"){
+        $slackUrl = 'https://hooks.slack.com/services/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'
+        $text = "Pipeline failed at build: $BUILD_PATH"
+        $payload = @{
+          text = $text
+        } | ConvertTo-Json
+          curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl
+      } 
+    - |
+      if ($VERSION_CONTENT.Contains("$BUILD_PATH")){
+      Write-Host "Skipping zipping."
+        
+      }else{
+      Set-Content -Path $versionFile -Value $BUILD_PATH
+      $slackUrl = 'https://hooks.slack.com/services/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'
+      $text = "<@U051VA48N0P>New build available $BUILD_PATH on steam"
+      $payload = @{
+      text = $text
+      } | ConvertTo-Json
+      curl -X POST -H 'Content-type: application/json' --data $payload $slackUrl
+      }
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_REF_NAME == "feature/CI"
+  artifacts:
+    when: always
+    paths:
+      - BuildLog/
+    reports:
+      junit: Junit/*.xml
+  allow_failure: false
+  tags:
+    - runnerv2
